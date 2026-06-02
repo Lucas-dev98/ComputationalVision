@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Layout, Container, Row, Col, message, Spin, Alert } from 'antd';
+import { useState } from 'react';
+import { Layout, Row, Col, message, Alert } from 'antd';
 import { CameraOutlined } from '@ant-design/icons';
 import { WebcamCapture } from './components/WebcamCapture';
 import { ImagePreview } from './components/ImagePreview';

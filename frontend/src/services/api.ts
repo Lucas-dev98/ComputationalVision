@@ -1,6 +1,16 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080';
+// Detectar porta da API (desenvolvimento ou produção)
+const API_URL = (() => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  // Fallback para ambiente de desenvolvimento
+  return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:8081'
+    : 'http://localhost:8080';
+})();
+
 const OCR_URL = process.env.REACT_APP_OCR_URL || 'http://localhost:5001';
 
 const apiClient = axios.create({

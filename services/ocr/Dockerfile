@@ -2,12 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Instalar dependências do sistema para OpenCV
+# Instalar dependências do sistema para OpenCV e build
 RUN apt-get update && apt-get install -y \
+    build-essential \
+    make \
     libsm6 \
     libxext6 \
     libxrender-dev \
-    libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requirements
