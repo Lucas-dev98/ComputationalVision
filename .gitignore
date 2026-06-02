@@ -1,0 +1,28 @@
+node_modules/
+*.pyc
+__pycache__/
+.env
+.env.local
+dist/
+build/
+*.log
+.DS_Store
+.vscode/settings.json
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+*.o
+vendor/
+go.sum
+go.mod
+
+# Obsidian
+.obsidian/workspace.json
+.obsidian/cache
+
+# IDEs
+.idea/
+*.swp
+*.swo
+*~
