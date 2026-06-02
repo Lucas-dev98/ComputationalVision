@@ -21,9 +21,13 @@ Este documento descreve como rodar toda a stack do projeto localmente para desen
     │                      │                      │
     ▼                      ▼                      ▼
 ┌──────────┐  ┌──────────────────┐  ┌──────────────────┐
-│ Go API   │  │ OCR Service      │  │ PostgreSQL       │
-│:8081     │  │ (Mock):5001      │  │ :5434            │
+  │ Go API   │  │ OCR Service      │  │ PostgreSQL       │
+  │:8081     │  │ (Mock):5001      │  │ :5434            │
 └──────────┘  └──────────────────┘  └──────────────────┘
+  ┌──────────┐
+  │ Parser   │
+  │:8082     │
+  └──────────┘
 ```
 
 ## 📋 Pré-requisitos
@@ -106,7 +110,7 @@ EOF
 
 ## 🎯 Executar os Serviços
 
-Abra 3 terminais diferentes:
+Abra 4 terminais diferentes:
 
 ### Terminal 1 - Go API Service
 
@@ -141,7 +145,20 @@ python3 main_mock.py
 INFO:     Uvicorn running on http://0.0.0.0:5001 (Press CTRL+C to quit)
 ```
 
-### Terminal 3 - Frontend Static Server
+### Terminal 3 - Parser Service
+
+```bash
+cd services/parser
+$env:PORT='8082'
+go run .
+```
+
+**Esperado:**
+```
+Parser Service escutando em 0.0.0.0:8082
+```
+
+### Terminal 4 - Frontend Static Server
 
 ```bash
 cd /home/lucasbastos/ComputationalVision/frontend
@@ -161,7 +178,7 @@ Serving HTTP on 0.0.0.0:3000 (http://0.0.0.0:3000/) ...
 
 ## ✅ Verificações de Health
 
-Em um quarto terminal, verifique se tudo está rodando:
+Em um quinto terminal, verifique se tudo está rodando:
 
 ```bash
 # Frontend
@@ -173,6 +190,9 @@ curl http://localhost:8081/health
 # OCR Service
 curl http://localhost:5001/health
 
+# Parser Service
+curl http://localhost:8082/health
+
 # Inventory items
 curl http://localhost:8081/inventory/items
 ```
@@ -183,6 +203,7 @@ curl http://localhost:8081/inventory/items
 ✅ Frontend: <!DOCTYPE html>
 ✅ Go API: {"service":"inventory-service","status":"healthy","version":"1.0.0"}
 ✅ OCR: {"status":"healthy","service":"ocr-service","version":"1.0.0-mock"}
+✅ Parser: {"status":"healthy","service":"parser-service","version":"1.0.0"}
 ✅ Items: {"total":0,"items":[]}
 ```
 

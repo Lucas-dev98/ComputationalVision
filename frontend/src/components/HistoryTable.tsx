@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Table, Card, Empty, Button, Space, Tag } from 'antd';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Table, Card, Empty, Button, Tag } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { inventoryService } from '../services/api';
 
@@ -25,7 +25,7 @@ export const HistoryTable: React.FC = () => {
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
-  const loadItems = async () => {
+  const loadItems = useCallback(async () => {
     setLoading(true);
     try {
       const offset = (page - 1) * pageSize;
@@ -37,11 +37,11 @@ export const HistoryTable: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page]);
 
   useEffect(() => {
     loadItems();
-  }, [page]);
+  }, [loadItems]);
 
   const columns = [
     {

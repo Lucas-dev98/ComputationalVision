@@ -5,7 +5,7 @@ import { WebcamCapture } from './components/WebcamCapture';
 import { ImagePreview } from './components/ImagePreview';
 import { ApprovalForm } from './components/ApprovalForm';
 import { HistoryTable } from './components/HistoryTable';
-import { ocrService, inventoryService } from './services/api';
+import { ocrService, parserService, inventoryService } from './services/api';
 import './App.css';
 
 const { Header, Content, Footer } = Layout;
@@ -14,6 +14,21 @@ interface OCRResult {
   success: boolean;
   text: string[];
   confidence: number[];
+  mock?: boolean;
+  detected_part_numbers?: string[];
+  detected_serial_numbers?: string[];
+  error?: string;
+}
+
+interface ParserResult {
+  success: boolean;
+  part_number?: string;
+  serial_number?: string;
+  manufacturer?: string;
+  category?: string;
+  normalized_description?: string;
+  confidence?: number;
+  signals?: string[];
   error?: string;
 }
 
@@ -24,6 +39,8 @@ function App() {
   const [loadingInventory, setLoadingInventory] = useState(false);
   const [suggestedPN, setSuggestedPN] = useState('');
   const [catalogSearchResult, setCatalogSearchResult] = useState<any>(null);
+  const [parserResult, setParserResult] = useState<ParserResult | undefined>();
+  const [ocrMockActive, setOcrMockActive] = useState(false);
   const [refreshHistory, setRefreshHistory] = useState(0);
 
   const handleCapture = async (imageSrc: string, blob: Blob) => {
@@ -31,6 +48,8 @@ function App() {
     setOcrResult(undefined);
     setSuggestedPN('');
     setCatalogSearchResult(null);
+    setParserResult(undefined);
+    setOcrMockActive(false);
 
     // Executar OCR automaticamente
     await performOCR(blob);
@@ -43,26 +62,38 @@ function App() {
       
       if (result.success) {
         setOcrResult(result);
-        
-        // Tentar encontrar um Part Number no resultado
-        if (result.text && result.text.length > 0) {
-          // Tomar o primeiro texto como sugestão de PN
-          const firstText = result.text[0];
-          setSuggestedPN(firstText);
-          
-          // Buscar no catálogo
-          try {
-            const searchResult = await inventoryService.searchCatalog(firstText);
+
+        if (result.mock) {
+          setOcrMockActive(true);
+          setParserResult(undefined);
+          setSuggestedPN('');
+          setCatalogSearchResult(null);
+          message.warning('OCR em modo mock ativo. Inicie o OCR real para extrair os dados corretos da etiqueta.');
+          return;
+        }
+
+        try {
+          const parsed = await parserService.parseOcrText(result.text || []);
+          setParserResult(parsed);
+
+          const suggestedPartNumber = parsed.part_number || result.detected_part_numbers?.[0] || result.text[0] || '';
+          setSuggestedPN(suggestedPartNumber);
+
+          if (suggestedPartNumber) {
+            const searchResult = await inventoryService.searchCatalog(suggestedPartNumber);
             setCatalogSearchResult(searchResult);
-            
+
             if (searchResult.found) {
               message.success(`Item encontrado no catálogo: ${searchResult.item.part_number}`);
             } else {
               message.info('Item não encontrado no catálogo. Você pode adicionar manualmente.');
             }
-          } catch (error) {
-            console.error('Erro ao buscar no catálogo:', error);
           }
+        } catch (error) {
+          console.error('Erro ao processar no parser:', error);
+
+          const fallbackPartNumber = result.detected_part_numbers?.[0] || result.text[0] || '';
+          setSuggestedPN(fallbackPartNumber);
         }
       } else {
         message.error('Erro ao fazer OCR: ' + (result.error || 'Erro desconhecido'));
@@ -144,6 +175,47 @@ function App() {
             style={{ marginBottom: '24px' }}
           />
 
+          {ocrMockActive && (
+            <Alert
+              style={{ marginBottom: '24px' }}
+              type="warning"
+              showIcon
+              message="OCR mock ativo"
+              description="O serviço atual retorna texto fixo para testes e não lê a foto real. Inicie services/ocr/main.py para identificação real da memória."
+            />
+          )}
+
+          {ocrResult && catalogSearchResult && (
+            <Alert
+              style={{ marginBottom: '24px' }}
+              type={catalogSearchResult.found ? 'success' : 'warning'}
+              showIcon
+              message={catalogSearchResult.found ? 'Part Number localizado' : 'Part Number não localizado'}
+              description={catalogSearchResult.found && catalogSearchResult.item ? (
+                <span>
+                  <strong>{catalogSearchResult.item.part_number}</strong> ·{' '}
+                  {catalogSearchResult.item.manufacturer} · {catalogSearchResult.item.category}
+                </span>
+              ) : (
+                'Revise o texto detectado antes de confirmar a entrada.'
+              )}
+            />
+          )}
+
+          {parserResult && parserResult.success && (
+            <Alert
+              style={{ marginBottom: '24px' }}
+              type="info"
+              showIcon
+              message={`Parser: ${parserResult.category || 'unknown'}${parserResult.confidence ? ` · confiança ${Math.round(parserResult.confidence * 100)}%` : ''}`}
+              description={
+                parserResult.normalized_description
+                  ? `Descrição normalizada: ${parserResult.normalized_description}`
+                  : 'O parser não gerou descrição normalizada.'
+              }
+            />
+          )}
+
           {/* Seção de Captura */}
           <Row gutter={24} style={{ marginBottom: '24px' }}>
             <Col xs={24} md={12}>
@@ -165,6 +237,7 @@ function App() {
                 <ApprovalForm
                   ocrText={ocrResult.text}
                   suggestedPN={suggestedPN}
+                  parserResult={parserResult}
                   onSubmit={handleSubmit}
                   loading={loadingInventory}
                 />

@@ -12,6 +12,7 @@ const API_URL = (() => {
 })();
 
 const OCR_URL = process.env.REACT_APP_OCR_URL || 'http://localhost:5001';
+const PARSER_URL = process.env.REACT_APP_PARSER_URL || 'http://localhost:8082';
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -21,6 +22,11 @@ const apiClient = axios.create({
 const ocrClient = axios.create({
   baseURL: OCR_URL,
   timeout: 30000,
+});
+
+const parserClient = axios.create({
+  baseURL: PARSER_URL,
+  timeout: 15000,
 });
 
 // Serviço de OCR
@@ -93,9 +99,25 @@ export const inventoryService = {
   },
 };
 
-export default {
+export const parserService = {
+  async parseOcrText(text: string[]) {
+    try {
+      const response = await parserClient.post('/parse', { text });
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao processar texto no parser:', error);
+      throw error;
+    }
+  },
+};
+
+const services = {
   apiClient,
   ocrClient,
+  parserClient,
   ocrService,
+  parserService,
   inventoryService,
 };
+
+export default services;

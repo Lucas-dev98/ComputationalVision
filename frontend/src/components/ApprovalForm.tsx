@@ -6,16 +6,25 @@ import {
   Card, 
   message, 
   Space, 
-  Table, 
-  Tag,
   Divider,
-  Select
+  Select,
+  Descriptions,
+  Tag
 } from 'antd';
 import { CheckCircleOutlined, FormOutlined } from '@ant-design/icons';
+
+interface ParserResult {
+  part_number?: string;
+  serial_number?: string;
+  manufacturer?: string;
+  category?: string;
+  normalized_description?: string;
+}
 
 interface ApprovalFormProps {
   ocrText?: string[];
   suggestedPN?: string;
+  parserResult?: ParserResult;
   onSubmit: (data: {
     part_number: string;
     serial_number?: string;
@@ -29,6 +38,7 @@ interface ApprovalFormProps {
 export const ApprovalForm: React.FC<ApprovalFormProps> = ({
   ocrText = [],
   suggestedPN = '',
+  parserResult,
   onSubmit,
   loading = false,
 }) => {
@@ -36,10 +46,14 @@ export const ApprovalForm: React.FC<ApprovalFormProps> = ({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (suggestedPN) {
-      form.setFieldValue('part_number', suggestedPN);
-    }
-  }, [suggestedPN, form]);
+    form.setFieldsValue({
+      part_number: suggestedPN || parserResult?.part_number || '',
+      serial_number: parserResult?.serial_number || '',
+      manufacturer: parserResult?.manufacturer || '',
+      category: parserResult?.category || '',
+      normalized_description: parserResult?.normalized_description || '',
+    });
+  }, [suggestedPN, parserResult, form]);
 
   const handleSubmit = async (values: any) => {
     setSubmitting(true);
@@ -51,7 +65,6 @@ export const ApprovalForm: React.FC<ApprovalFormProps> = ({
         location: values.location,
         reason: values.reason,
       });
-      message.success('Item adicionado ao estoque com sucesso!');
       form.resetFields();
     } catch (error) {
       message.error('Erro ao adicionar item ao estoque');
@@ -67,6 +80,40 @@ export const ApprovalForm: React.FC<ApprovalFormProps> = ({
       extra={<FormOutlined />}
       style={{ marginBottom: '20px' }}
     >
+      {parserResult && (
+        <Card
+          type="inner"
+          title="Resumo da extração"
+          size="small"
+          style={{ marginBottom: '20px' }}
+          styles={{ body: { padding: '12px' } }}
+        >
+          <Descriptions size="small" column={1} bordered>
+            <Descriptions.Item label="Part Number">
+              {parserResult.part_number || 'Não identificado'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Serial Number">
+              {parserResult.serial_number || 'Não identificado'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Fabricante">
+              {parserResult.manufacturer || 'Não identificado'}
+            </Descriptions.Item>
+            <Descriptions.Item label="Categoria">
+              {parserResult.category ? (
+                <Tag color={parserResult.category === 'memory' ? 'blue' : 'geekblue'}>
+                  {parserResult.category}
+                </Tag>
+              ) : (
+                'Não identificado'
+              )}
+            </Descriptions.Item>
+            <Descriptions.Item label="Descrição normalizada">
+              {parserResult.normalized_description || 'Não gerada'}
+            </Descriptions.Item>
+          </Descriptions>
+        </Card>
+      )}
+
       {/* Exibir texto extraído */}
       {ocrText.length > 0 && (
         <>
@@ -75,7 +122,7 @@ export const ApprovalForm: React.FC<ApprovalFormProps> = ({
             title="Texto Extraído (OCR)"
             size="small"
             style={{ marginBottom: '20px' }}
-            bodyStyle={{ padding: '12px' }}
+            styles={{ body: { padding: '12px' } }}
           >
             <div style={{ 
               backgroundColor: '#f5f5f5', 
@@ -122,6 +169,39 @@ export const ApprovalForm: React.FC<ApprovalFormProps> = ({
           <Input 
             placeholder="Número de série (opcional)"
             size="large"
+          />
+        </Form.Item>
+
+        <Form.Item
+          label="Fabricante"
+          name="manufacturer"
+        >
+          <Input
+            placeholder="Fabricante detectado"
+            size="large"
+            readOnly
+          />
+        </Form.Item>
+
+        <Form.Item
+          label="Categoria"
+          name="category"
+        >
+          <Input
+            placeholder="Categoria detectada"
+            size="large"
+            readOnly
+          />
+        </Form.Item>
+
+        <Form.Item
+          label="Descrição Normalizada"
+          name="normalized_description"
+        >
+          <Input.TextArea
+            placeholder="Descrição normalizada pelo parser"
+            rows={2}
+            readOnly
           />
         </Form.Item>
 

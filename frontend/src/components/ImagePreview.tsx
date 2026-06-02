@@ -18,8 +18,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
       <Card title={title} style={{ marginBottom: '20px' }}>
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           <Spin 
-            indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />} 
-            tip="Processando imagem..."
+            indicator={<LoadingOutlined style={{ fontSize: 48 }} spin />}
           />
         </div>
       </Card>

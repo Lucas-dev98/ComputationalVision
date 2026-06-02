@@ -151,8 +151,12 @@ func (db *Database) SearchCatalog(partNumber string) (*CatalogItem, error) {
 	item := &CatalogItem{}
 
 	err := db.conn.QueryRow(`
-		SELECT id, part_number, serial_pattern, manufacturer, category, 
-		       normalized_description, created_at, updated_at
+		SELECT id, part_number,
+		       COALESCE(serial_pattern, ''),
+		       COALESCE(manufacturer, ''),
+		       COALESCE(category, ''),
+		       COALESCE(normalized_description, ''),
+		       created_at, updated_at
 		FROM catalog
 		WHERE part_number = $1
 		LIMIT 1
@@ -246,10 +250,17 @@ func (db *Database) GetInventory(id int64) (*InventoryItem, error) {
 	catalogItem := &CatalogItem{}
 
 	err := db.conn.QueryRow(`
-		SELECT i.id, i.catalog_id, i.serial_number, i.quantity, i.location, 
+		SELECT i.id, i.catalog_id,
+		       COALESCE(i.serial_number, ''),
+		       i.quantity,
+		       COALESCE(i.location, ''),
 		       i.status, i.received_at, i.last_updated,
-		       c.id, c.part_number, c.serial_pattern, c.manufacturer, c.category,
-		       c.normalized_description, c.created_at, c.updated_at
+		       c.id, c.part_number,
+		       COALESCE(c.serial_pattern, ''),
+		       COALESCE(c.manufacturer, ''),
+		       COALESCE(c.category, ''),
+		       COALESCE(c.normalized_description, ''),
+		       c.created_at, c.updated_at
 		FROM inventory i
 		JOIN catalog c ON i.catalog_id = c.id
 		WHERE i.id = $1
@@ -295,10 +306,17 @@ func (db *Database) ListInventory(limit, offset int) ([]InventoryItem, int, erro
 	}
 
 	rows, err := db.conn.Query(`
-		SELECT i.id, i.catalog_id, i.serial_number, i.quantity, i.location, 
+		SELECT i.id, i.catalog_id,
+		       COALESCE(i.serial_number, ''),
+		       i.quantity,
+		       COALESCE(i.location, ''),
 		       i.status, i.received_at, i.last_updated,
-		       c.id, c.part_number, c.serial_pattern, c.manufacturer, c.category,
-		       c.normalized_description, c.created_at, c.updated_at
+		       c.id, c.part_number,
+		       COALESCE(c.serial_pattern, ''),
+		       COALESCE(c.manufacturer, ''),
+		       COALESCE(c.category, ''),
+		       COALESCE(c.normalized_description, ''),
+		       c.created_at, c.updated_at
 		FROM inventory i
 		JOIN catalog c ON i.catalog_id = c.id
 		WHERE i.status = 'active'
