@@ -74,27 +74,66 @@ feat: estrutura base, frontend React, OCR Service e Inventory Service - Fase 1 M
 - ✅ Detalhes de Fase 1 (MVP)
 - ✅ Arquivo de commits (este)
 
+**Status:** ✅ Completo
+
 ---
 
-## Próximos Commits (Fase 1 continuação)
+### Commit 2: Configuração, Automação e Contribuição
 
-### Commit 2: Testes Unitários + CI/CD
-- [ ] Testes do OCR Service
-- [ ] Testes do Inventory Service
-- [ ] GitHub Actions workflow
-- [ ] Lint e formatação de código
+**Hash:** `e90f8e8`  
+**Data:** 01/06/2026 (após Commit 1)  
+**Tipo:** docs: guias e automação
 
-### Commit 3: Melhorias de UX
-- [ ] Validação de forma aprimorada
-- [ ] Feedback visual melhorado
-- [ ] Dark mode (opcional)
-- [ ] Responsividade aprimorada
+**O que foi feito:**
+- ✅ .env.example com todas as variáveis
+- ✅ Makefile com 20+ comandos úteis
+- ✅ CONTRIBUTING.md com guia completo
+- ✅ CHANGELOG.md com versionamento
+- ✅ setup.sh para automação
 
-### Commit 4: Integração Completa
-- [ ] Testes E2E
-- [ ] Exemplo de uso
-- [ ] Documentação de API (Swagger)
-- [ ] Setup guide
+**Arquivos Adicionados:** 5
+
+**Status:** ✅ Completo
+
+---
+
+### Commit 3: Testes e Documentação de API
+
+**Hash:** `4d29cfb`  
+**Data:** 01/06/2026 (após Commit 2)  
+**Tipo:** test: testes unitários e docs
+
+**O que foi feito:**
+- ✅ test_ocr_service.py com 5 testes
+- ✅ main_test.go com 3 testes
+- ✅ docs/API.md - Referência completa
+- ✅ docs/TESTING.md - Guia de testes
+
+**Testes Implementados:**
+- OCR: Inicialização, imagem inválida, estrutura, time
+- API: Conexão BD, busca (encontrado/não encontrado)
+
+**Estatísticas:**
+- Testes: 8 unitários
+- Cobertura esperada: 70%+
+- Documentação: 2 arquivos
+
+**Status:** ✅ Completo
+
+---
+
+### Commit 4: Resumo Executivo e Consolidação
+
+**Hash:** `[próximo]`  
+**Data:** 01/06/2026 (atual)  
+**Tipo:** docs: consolidação Fase 1
+
+**O que será feito:**
+- ✅ PHASE-1-SUMMARY.md completo
+- ✅ Atualização de COMMITS.md
+- ✅ Consolidação de documentação
+
+**Status:** Em progresso
 
 ---
 
