@@ -35,8 +35,56 @@ Este documento descreve como rodar toda a stack do projeto localmente para desen
 - **Node.js** 18+ e npm
 - **Go** 1.21+
 - **Python** 3.9+
-- **PostgreSQL** 15 (ou Docker)
+- **PostgreSQL** 15 (opcional nesta fase)
 - **Make** (para build tasks)
+
+Docker e Docker Compose sao opcionais. O fluxo principal abaixo roda sem containers.
+
+## ⚡ Fluxo sem Docker (recomendado para este computador)
+
+Abra 4 terminais para executar os servicos base:
+
+```bash
+cd frontend
+npm install
+npm start
+
+cd services/ocr
+python main.py
+
+cd services/parser
+$env:PORT='8082'
+go run .
+
+cd services/web-research
+$env:PORT='8083'
+go run .
+```
+
+Opcionalmente, abra um 5o terminal para o Inventory Service se tiver PostgreSQL local configurado:
+
+```bash
+cd services/inventory
+$env:DATABASE_URL='postgres://postgres@localhost:5434/inventory_db?sslmode=disable'
+$env:PORT='8081'
+go run .
+```
+
+Mesmo sem Inventory, o frontend agora continua com parser + pesquisa web automatica.
+
+### Opcao recomendada: Inventory com banco embutido (SQLite)
+
+Se quiser testar catalogo e entrada de estoque sem PostgreSQL, rode:
+
+```bash
+cd services/inventory
+$env:DATABASE_DRIVER='sqlite'
+$env:DATABASE_URL='file:./inventory-dev.db?_pragma=foreign_keys(1)'
+$env:PORT='8081'
+go run .
+```
+
+No primeiro start, o servico cria as tabelas e um seed minimo no arquivo local `inventory-dev.db`.
 
 ## 🔧 Configuração Inicial
 

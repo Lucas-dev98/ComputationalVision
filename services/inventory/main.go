@@ -13,7 +13,7 @@ func main() {
 	log.Printf("Iniciando Inventory Service na porta %s", config.Port)
 
 	// Conectar ao banco
-	db, err := NewDatabase(config.DatabaseURL)
+	db, err := NewDatabase(config.DatabaseDriver, config.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Falha ao conectar ao banco: %v", err)
 	}

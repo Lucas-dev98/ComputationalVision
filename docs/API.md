@@ -4,6 +4,16 @@
 
 Base URL: `http://localhost:8080`
 
+Para desenvolvimento local sem PostgreSQL, o Inventory Service pode rodar com SQLite:
+
+```bash
+cd services/inventory
+$env:DATABASE_DRIVER='sqlite'
+$env:DATABASE_URL='file:./inventory-dev.db?_pragma=foreign_keys(1)'
+$env:PORT='8081'
+go run .
+```
+
 ---
 
 ## Health Check

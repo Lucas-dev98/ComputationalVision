@@ -24,6 +24,7 @@ interface ParserResult {
 interface ApprovalFormProps {
   ocrText?: string[];
   suggestedPN?: string;
+  suggestedSN?: string;
   parserResult?: ParserResult;
   onSubmit: (data: {
     part_number: string;
@@ -38,6 +39,7 @@ interface ApprovalFormProps {
 export const ApprovalForm: React.FC<ApprovalFormProps> = ({
   ocrText = [],
   suggestedPN = '',
+  suggestedSN = '',
   parserResult,
   onSubmit,
   loading = false,
@@ -48,12 +50,12 @@ export const ApprovalForm: React.FC<ApprovalFormProps> = ({
   useEffect(() => {
     form.setFieldsValue({
       part_number: suggestedPN || parserResult?.part_number || '',
-      serial_number: parserResult?.serial_number || '',
+      serial_number: parserResult?.serial_number || suggestedSN || '',
       manufacturer: parserResult?.manufacturer || '',
       category: parserResult?.category || '',
       normalized_description: parserResult?.normalized_description || '',
     });
-  }, [suggestedPN, parserResult, form]);
+  }, [suggestedPN, suggestedSN, parserResult, form]);
 
   const handleSubmit = async (values: any) => {
     setSubmitting(true);

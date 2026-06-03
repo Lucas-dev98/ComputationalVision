@@ -5,7 +5,7 @@ import { WebcamCapture } from './components/WebcamCapture';
 import { ImagePreview } from './components/ImagePreview';
 import { ApprovalForm } from './components/ApprovalForm';
 import { HistoryTable } from './components/HistoryTable';
-import { ocrService, parserService, inventoryService } from './services/api';
+import { ocrService, parserService, inventoryService, webResearchService } from './services/api';
 import './App.css';
 
 const { Header, Content, Footer } = Layout;
@@ -29,7 +29,145 @@ interface ParserResult {
   normalized_description?: string;
   confidence?: number;
   signals?: string[];
+  tokens?: string[];
   error?: string;
+}
+
+interface WebResearchResult {
+  success: boolean;
+  part_number?: string;
+  found?: boolean;
+  manufacturer?: string;
+  category?: string;
+  normalized_description?: string;
+  confidence?: number;
+  signals?: string[];
+  error?: string;
+}
+
+const PART_NUMBER_REGEX = /\b[A-Z0-9][A-Z0-9._/-]{5,}\b/g;
+const SERIAL_LABELED_REGEX = /\b(?:SN|S\/N|SERIAL|SERIAL\s*NO|SERIALNUMBER)\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{4,})\b/i;
+const SERIAL_CANDIDATE_REGEX = /\b[A-Z0-9][A-Z0-9-]{7,}\b/g;
+
+function isLikelySpecToken(token: string): boolean {
+  const upperToken = token.toUpperCase();
+  if (["DDR3", "DDR4", "DDR5", "RDIMM", "UDIMM", "DIMM", "ECC", "NVME", "SSD", "HDD"].includes(upperToken)) {
+    return true;
+  }
+  if (/^\d+(GB|TB|MHZ|RPM|MT\/S)$/i.test(upperToken)) {
+    return true;
+  }
+  if (/^PC[345]-?\d+/i.test(upperToken)) {
+    return true;
+  }
+  return false;
+}
+
+function candidateScore(token: string): number {
+  let score = 0;
+  if (/\d/.test(token)) {
+    score += 2;
+  }
+  if (/[A-Z]/.test(token)) {
+    score += 2;
+  }
+  if (/[-_/\.]/.test(token)) {
+    score += 2;
+  }
+  if (token.length >= 10) {
+    score += 2;
+  }
+  if (/^SN[-_]?/i.test(token)) {
+    score -= 3;
+  }
+  return score;
+}
+
+function extractPartNumberFromOCRText(lines: string[]): string {
+  const candidates: string[] = [];
+
+  for (const rawLine of lines || []) {
+    const upperLine = (rawLine || "").toUpperCase();
+    const matches = upperLine.match(PART_NUMBER_REGEX) || [];
+
+    for (const match of matches) {
+      const token = match.trim();
+      if (token.length < 6) {
+        continue;
+      }
+      if (!/\d/.test(token)) {
+        continue;
+      }
+      if (isLikelySpecToken(token)) {
+        continue;
+      }
+      candidates.push(token);
+    }
+  }
+
+  if (candidates.length === 0) {
+    return "";
+  }
+
+  const sorted = [...new Set(candidates)].sort((a, b) => {
+    const scoreDiff = candidateScore(b) - candidateScore(a);
+    if (scoreDiff !== 0) {
+      return scoreDiff;
+    }
+    return b.length - a.length;
+  });
+
+  return sorted[0] || "";
+}
+
+function extractSerialNumberFromOCRText(lines: string[], partNumber = ""): string {
+  const normalizedPartNumber = partNumber.toUpperCase().trim();
+
+  for (const rawLine of lines || []) {
+    const upperLine = (rawLine || "").toUpperCase();
+    const labeled = upperLine.match(SERIAL_LABELED_REGEX);
+    if (labeled?.[1]) {
+      const serial = labeled[1].trim();
+      if (serial !== normalizedPartNumber && !isLikelySpecToken(serial)) {
+        return serial;
+      }
+    }
+  }
+
+  const candidates: string[] = [];
+  for (const rawLine of lines || []) {
+    const upperLine = (rawLine || "").toUpperCase();
+    const matches = upperLine.match(SERIAL_CANDIDATE_REGEX) || [];
+
+    for (const token of matches) {
+      const value = token.trim();
+      if (value === normalizedPartNumber) {
+        continue;
+      }
+      if (!/[A-Z]/.test(value) || !/\d/.test(value)) {
+        continue;
+      }
+      if (isLikelySpecToken(value)) {
+        continue;
+      }
+      candidates.push(value);
+    }
+  }
+
+  if (candidates.length === 0) {
+    return "";
+  }
+
+  const sorted = [...new Set(candidates)].sort((a, b) => {
+    const hasSNA = /^SN[-_]?/.test(a) ? 1 : 0;
+    const hasSNB = /^SN[-_]?/.test(b) ? 1 : 0;
+    if (hasSNA !== hasSNB) {
+      return hasSNB - hasSNA;
+    }
+    return b.length - a.length;
+  });
+
+  return sorted[0] || "";
 }
 
 function App() {
@@ -38,8 +176,10 @@ function App() {
   const [loadingOCR, setLoadingOCR] = useState(false);
   const [loadingInventory, setLoadingInventory] = useState(false);
   const [suggestedPN, setSuggestedPN] = useState('');
+  const [suggestedSN, setSuggestedSN] = useState('');
   const [catalogSearchResult, setCatalogSearchResult] = useState<any>(null);
   const [parserResult, setParserResult] = useState<ParserResult | undefined>();
+  const [webResearchResult, setWebResearchResult] = useState<WebResearchResult | undefined>();
   const [ocrMockActive, setOcrMockActive] = useState(false);
   const [refreshHistory, setRefreshHistory] = useState(0);
 
@@ -47,8 +187,10 @@ function App() {
     setCapturedImage(imageSrc);
     setOcrResult(undefined);
     setSuggestedPN('');
+    setSuggestedSN('');
     setCatalogSearchResult(null);
     setParserResult(undefined);
+    setWebResearchResult(undefined);
     setOcrMockActive(false);
 
     // Executar OCR automaticamente
@@ -74,26 +216,93 @@ function App() {
 
         try {
           const parsed = await parserService.parseOcrText(result.text || []);
-          setParserResult(parsed);
+          const ocrFallbackPartNumber = extractPartNumberFromOCRText(result.text || []);
+          const suggestedPartNumber = parsed.part_number || result.detected_part_numbers?.[0] || ocrFallbackPartNumber || result.text[0] || '';
+          const ocrFallbackSerial = extractSerialNumberFromOCRText(result.text || [], suggestedPartNumber);
+          const suggestedSerialNumber = parsed.serial_number || result.detected_serial_numbers?.[0] || ocrFallbackSerial || '';
 
-          const suggestedPartNumber = parsed.part_number || result.detected_part_numbers?.[0] || result.text[0] || '';
+          const parsedWithFallback = {
+            ...parsed,
+            serial_number: suggestedSerialNumber,
+          };
+
+          setParserResult(parsedWithFallback);
           setSuggestedPN(suggestedPartNumber);
+          setSuggestedSN(suggestedSerialNumber);
+
+          if (!parsed.part_number && ocrFallbackPartNumber) {
+            message.success(`PN identificado via OCR: ${ocrFallbackPartNumber}`);
+          }
+          if (!parsed.serial_number && suggestedSerialNumber) {
+            message.success(`Serial Number identificado via OCR: ${suggestedSerialNumber}`);
+          }
 
           if (suggestedPartNumber) {
-            const searchResult = await inventoryService.searchCatalog(suggestedPartNumber);
-            setCatalogSearchResult(searchResult);
+            let shouldRunWebResearch = true;
 
-            if (searchResult.found) {
-              message.success(`Item encontrado no catálogo: ${searchResult.item.part_number}`);
-            } else {
-              message.info('Item não encontrado no catálogo. Você pode adicionar manualmente.');
+            try {
+              const searchResult = await inventoryService.searchCatalog(suggestedPartNumber);
+              setCatalogSearchResult(searchResult);
+
+              if (searchResult.found) {
+                shouldRunWebResearch = false;
+                message.success(`Item encontrado no catálogo: ${searchResult.item.part_number}`);
+                setWebResearchResult(undefined);
+              } else {
+                message.info('Item não encontrado no catálogo. Você pode adicionar manualmente.');
+              }
+            } catch (catalogError) {
+              setCatalogSearchResult({ found: false, error: 'Inventory API indisponível no momento.' });
+              message.warning('Inventory API indisponível. Continuando com pesquisa web automática.');
+              console.warn('Falha ao consultar catálogo:', catalogError);
+            }
+
+            if (shouldRunWebResearch) {
+              try {
+                const research = await webResearchService.researchPartNumber({
+                  part_number: suggestedPartNumber,
+                  manufacturer: parsedWithFallback.manufacturer,
+                  category: parsedWithFallback.category,
+                  normalized_description: parsedWithFallback.normalized_description,
+                  tokens: parsedWithFallback.tokens || result.text || [],
+                });
+
+                setWebResearchResult(research);
+
+                if (research.success && research.confidence && research.confidence >= 0.5) {
+                  setParserResult({
+                    ...parsedWithFallback,
+                    manufacturer: parsedWithFallback.manufacturer || research.manufacturer,
+                    category: parsedWithFallback.category && parsedWithFallback.category !== 'unknown' ? parsedWithFallback.category : research.category,
+                    normalized_description: parsedWithFallback.normalized_description || research.normalized_description,
+                  });
+                  message.success('Pesquisa web automática sugeriu enriquecimento para o item.');
+                }
+              } catch (researchError) {
+                console.warn('Pesquisa web indisponível neste momento:', researchError);
+              }
             }
           }
         } catch (error) {
           console.error('Erro ao processar no parser:', error);
 
-          const fallbackPartNumber = result.detected_part_numbers?.[0] || result.text[0] || '';
+          const ocrFallbackPartNumber = extractPartNumberFromOCRText(result.text || []);
+          const fallbackPartNumber = result.detected_part_numbers?.[0] || ocrFallbackPartNumber || result.text[0] || '';
+          const fallbackSerialNumber = result.detected_serial_numbers?.[0] || extractSerialNumberFromOCRText(result.text || [], fallbackPartNumber) || '';
           setSuggestedPN(fallbackPartNumber);
+          setSuggestedSN(fallbackSerialNumber);
+
+          if (fallbackPartNumber) {
+            try {
+              const research = await webResearchService.researchPartNumber({
+                part_number: fallbackPartNumber,
+                tokens: result.text || [],
+              });
+              setWebResearchResult(research);
+            } catch (researchError) {
+              console.warn('Pesquisa web indisponível durante fallback:', researchError);
+            }
+          }
         }
       } else {
         message.error('Erro ao fazer OCR: ' + (result.error || 'Erro desconhecido'));
@@ -131,6 +340,7 @@ function App() {
         setCapturedImage(undefined);
         setOcrResult(undefined);
         setSuggestedPN('');
+        setSuggestedSN('');
         setCatalogSearchResult(null);
         
         // Atualizar tabela
@@ -216,6 +426,20 @@ function App() {
             />
           )}
 
+          {webResearchResult && webResearchResult.success && (
+            <Alert
+              style={{ marginBottom: '24px' }}
+              type={webResearchResult.found ? 'success' : 'info'}
+              showIcon
+              message={webResearchResult.found ? 'Pesquisa web automática concluída' : 'Pesquisa web executada sem resultados fortes'}
+              description={
+                webResearchResult.manufacturer || webResearchResult.category || webResearchResult.normalized_description
+                  ? `Sugestão: ${webResearchResult.manufacturer || 'Fabricante N/D'} · ${webResearchResult.category || 'Categoria N/D'} · ${webResearchResult.normalized_description || 'Sem descrição normalizada'}`
+                  : 'Nenhum enriquecimento adicional encontrado para este PN.'
+              }
+            />
+          )}
+
           {/* Seção de Captura */}
           <Row gutter={24} style={{ marginBottom: '24px' }}>
             <Col xs={24} md={12}>
@@ -237,6 +461,7 @@ function App() {
                 <ApprovalForm
                   ocrText={ocrResult.text}
                   suggestedPN={suggestedPN}
+                  suggestedSN={suggestedSN}
                   parserResult={parserResult}
                   onSubmit={handleSubmit}
                   loading={loadingInventory}

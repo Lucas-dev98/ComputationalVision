@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	_ "modernc.org/sqlite"
 )
 
 // Database gerencia a conexão com PostgreSQL
@@ -91,21 +93,29 @@ type ListResponse struct {
 
 // Config armazena configurações da aplicação
 type Config struct {
-	DatabaseURL string
-	RedisURL    string
-	Port        string
-	LogLevel    string
+	DatabaseDriver string
+	DatabaseURL    string
+	RedisURL       string
+	Port           string
+	LogLevel       string
 }
 
 // LoadConfig carrega configurações do ambiente
 func LoadConfig() *Config {
 	godotenv.Load()
 
+	driver := strings.ToLower(getEnv("DATABASE_DRIVER", "postgres"))
+	defaultDSN := "postgres://inventory:inventory_dev@localhost:5432/inventory_db?sslmode=disable"
+	if driver == "sqlite" {
+		defaultDSN = "file:./inventory-dev.db?_pragma=foreign_keys(1)"
+	}
+
 	return &Config{
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://inventory:inventory_dev@localhost:5432/inventory_db?sslmode=disable"),
-		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
-		Port:        getEnv("PORT", "8080"),
-		LogLevel:    getEnv("LOG_LEVEL", "info"),
+		DatabaseDriver: driver,
+		DatabaseURL:    getEnv("DATABASE_URL", defaultDSN),
+		RedisURL:       getEnv("REDIS_URL", "redis://localhost:6379"),
+		Port:           getEnv("PORT", "8080"),
+		LogLevel:       getEnv("LOG_LEVEL", "info"),
 	}
 }
 
@@ -118,8 +128,12 @@ func getEnv(key, defaultVal string) string {
 }
 
 // NewDatabase cria nova conexão com banco
-func NewDatabase(dsn string) (*Database, error) {
-	conn, err := sql.Open("postgres", dsn)
+func NewDatabase(driver, dsn string) (*Database, error) {
+	if driver == "" {
+		driver = "postgres"
+	}
+
+	conn, err := sql.Open(driver, dsn)
 	if err != nil {
 		log.Printf("Erro ao conectar ao banco: %v", err)
 		return nil, err
@@ -132,11 +146,23 @@ func NewDatabase(dsn string) (*Database, error) {
 	}
 
 	// Configurar pool
-	conn.SetMaxOpenConns(25)
-	conn.SetMaxIdleConns(5)
+	if driver == "sqlite" {
+		conn.SetMaxOpenConns(1)
+		conn.SetMaxIdleConns(1)
+	} else {
+		conn.SetMaxOpenConns(25)
+		conn.SetMaxIdleConns(5)
+	}
 	conn.SetConnMaxLifetime(5 * time.Minute)
 
-	log.Println("Conectado ao PostgreSQL com sucesso")
+	if driver == "sqlite" {
+		if err := bootstrapSQLite(conn); err != nil {
+			return nil, err
+		}
+		log.Println("Conectado ao SQLite (modo local dev) com sucesso")
+	} else {
+		log.Println("Conectado ao PostgreSQL com sucesso")
+	}
 
 	return &Database{conn: conn}, nil
 }

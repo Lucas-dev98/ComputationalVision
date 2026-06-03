@@ -13,6 +13,8 @@ const API_URL = (() => {
 
 const OCR_URL = process.env.REACT_APP_OCR_URL || 'http://localhost:5001';
 const PARSER_URL = process.env.REACT_APP_PARSER_URL || 'http://localhost:8082';
+const WEB_RESEARCH_URL = process.env.REACT_APP_WEB_RESEARCH_URL || 'http://localhost:8083';
+const OCR_TIMEOUT_MS = Number(process.env.REACT_APP_OCR_TIMEOUT_MS || '90000');
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -21,12 +23,17 @@ const apiClient = axios.create({
 
 const ocrClient = axios.create({
   baseURL: OCR_URL,
-  timeout: 30000,
+  timeout: OCR_TIMEOUT_MS,
 });
 
 const parserClient = axios.create({
   baseURL: PARSER_URL,
   timeout: 15000,
+});
+
+const webResearchClient = axios.create({
+  baseURL: WEB_RESEARCH_URL,
+  timeout: 12000,
 });
 
 // Serviço de OCR
@@ -43,6 +50,20 @@ export const ocrService = {
       });
       return response.data;
     } catch (error) {
+      const axiosError = error as { code?: string };
+
+      // O OCR real pode levar mais tempo no primeiro request (cold start dos modelos).
+      if (axiosError?.code === 'ECONNABORTED') {
+        console.warn('Timeout no OCR, tentando novamente com timeout estendido...');
+        const retryResponse = await ocrClient.post('/ocr', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: Math.max(OCR_TIMEOUT_MS, 120000),
+        });
+        return retryResponse.data;
+      }
+
       console.error('Erro ao fazer OCR:', error);
       throw error;
     }
@@ -56,6 +77,9 @@ export const inventoryService = {
       const response = await apiClient.get(`/catalog/search?pn=${partNumber}`);
       return response.data;
     } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        return { found: false };
+      }
       console.error('Erro ao buscar no catálogo:', error);
       throw error;
     }
@@ -111,12 +135,32 @@ export const parserService = {
   },
 };
 
+export const webResearchService = {
+  async researchPartNumber(data: {
+    part_number: string;
+    manufacturer?: string;
+    category?: string;
+    normalized_description?: string;
+    tokens?: string[];
+  }) {
+    try {
+      const response = await webResearchClient.post('/research', data);
+      return response.data;
+    } catch (error) {
+      console.error('Erro na pesquisa web automática:', error);
+      throw error;
+    }
+  },
+};
+
 const services = {
   apiClient,
   ocrClient,
   parserClient,
+  webResearchClient,
   ocrService,
   parserService,
+  webResearchService,
   inventoryService,
 };
 

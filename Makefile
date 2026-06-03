@@ -13,6 +13,7 @@ help:
 	@echo "  make install      - Instala dependências de todos os serviços"
 	@echo "  make frontend-dev - Inicia frontend em desenvolvimento"
 	@echo "  make ocr-dev      - Inicia OCR Service em desenvolvimento"
+	@echo "  make web-dev      - Inicia Web Research Service em desenvolvimento"
 	@echo "  make api-dev      - Inicia Inventory API em desenvolvimento"
 	@echo ""
 	@echo "Qualidade:"
@@ -51,6 +52,9 @@ logs-api:
 logs-ocr:
 	docker-compose -f infra/docker/docker-compose.yml logs -f ocr-service
 
+logs-web:
+	docker-compose -f infra/docker/docker-compose.yml logs -f web-research-service
+
 logs-db:
 	docker-compose -f infra/docker/docker-compose.yml logs -f postgres
 
@@ -72,7 +76,7 @@ db-reset: clean up
 	@echo "✓ Sistema resetado completamente"
 
 # Desenvolvimento Local
-install: install-frontend install-ocr install-api
+install: install-frontend install-ocr install-api install-web
 
 install-frontend:
 	cd frontend && npm install
@@ -86,11 +90,18 @@ install-api:
 	cd services/inventory && go mod download
 	@echo "✓ API dependências instaladas"
 
+install-web:
+	cd services/web-research && go mod download
+	@echo "✓ Web Research dependências instaladas"
+
 frontend-dev:
 	cd frontend && npm start
 
 ocr-dev:
 	cd services/ocr && python main.py
+
+web-dev:
+	cd services/web-research && go run .
 
 api-dev:
 	cd services/inventory && go run .

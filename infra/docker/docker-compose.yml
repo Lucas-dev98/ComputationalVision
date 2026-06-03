@@ -67,6 +67,17 @@ services:
     volumes:
       - ./services/inventory:/app
 
+  # Web Research Service (Go)
+  web-research-service:
+    build:
+      context: ../../services/web-research
+      dockerfile: Dockerfile
+    container_name: web_research_service
+    ports:
+      - "8083:8083"
+    environment:
+      PORT: "8083"
+
   # Frontend (React)
   frontend:
     build:
@@ -78,9 +89,11 @@ services:
     environment:
       REACT_APP_API_URL: "http://localhost:8080"
       REACT_APP_OCR_URL: "http://localhost:5001"
+      REACT_APP_WEB_RESEARCH_URL: "http://localhost:8083"
     depends_on:
       - inventory-service
       - ocr-service
+      - web-research-service
     volumes:
       - ./frontend/src:/app/src
 
