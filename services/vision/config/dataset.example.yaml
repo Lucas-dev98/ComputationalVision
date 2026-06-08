@@ -1,0 +1,9 @@
+# Copie para services/vision/config/dataset.yaml e ajuste caminhos reais.
+path: ../../datasets/vision/current
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: label_area
+  1: component

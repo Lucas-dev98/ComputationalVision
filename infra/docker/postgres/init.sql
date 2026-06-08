@@ -48,6 +48,25 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Criar tabela de Feedback para Aprendizado Contínuo
+CREATE TABLE IF NOT EXISTS feedback_samples (
+    id BIGSERIAL PRIMARY KEY,
+    part_number_predicted VARCHAR(200),
+    part_number_final VARCHAR(200),
+    serial_number_predicted VARCHAR(200),
+    serial_number_final VARCHAR(200),
+    manufacturer_predicted VARCHAR(100),
+    manufacturer_final VARCHAR(100),
+    category_predicted VARCHAR(100),
+    category_final VARCHAR(100),
+    correction_applied BOOLEAN NOT NULL DEFAULT FALSE,
+    confidence NUMERIC(6,4),
+    image_data TEXT,
+    ocr_text JSONB,
+    meta_json JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Criar índices para performance
 CREATE INDEX IF NOT EXISTS idx_catalog_pn ON catalog(part_number);
 CREATE INDEX IF NOT EXISTS idx_catalog_manufacturer ON catalog(manufacturer);
@@ -58,6 +77,8 @@ CREATE INDEX IF NOT EXISTS idx_inventory_status ON inventory(status);
 CREATE INDEX IF NOT EXISTS idx_movements_inventory ON movements(inventory_id);
 CREATE INDEX IF NOT EXISTS idx_movements_created ON movements(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback_samples(created_at);
+CREATE INDEX IF NOT EXISTS idx_feedback_correction ON feedback_samples(correction_applied);
 
 -- Inserir alguns Part Numbers de teste
 INSERT INTO catalog (part_number, manufacturer, category, normalized_description)

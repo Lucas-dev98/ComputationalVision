@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"log"
 	"os"
 	"strings"
@@ -51,6 +52,52 @@ type Movement struct {
 	Reason      string    `json:"reason"`
 	UserID      int64     `json:"user_id"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+// FeedbackSample representa uma amostra de correção humana para aprendizado contínuo.
+type FeedbackSample struct {
+	ID                    int64     `json:"id"`
+	PartNumberPredicted   string    `json:"part_number_predicted,omitempty"`
+	PartNumberFinal       string    `json:"part_number_final,omitempty"`
+	SerialNumberPredicted string    `json:"serial_number_predicted,omitempty"`
+	SerialNumberFinal     string    `json:"serial_number_final,omitempty"`
+	ManufacturerPredicted string    `json:"manufacturer_predicted,omitempty"`
+	ManufacturerFinal     string    `json:"manufacturer_final,omitempty"`
+	CategoryPredicted     string    `json:"category_predicted,omitempty"`
+	CategoryFinal         string    `json:"category_final,omitempty"`
+	CorrectionApplied     bool      `json:"correction_applied"`
+	Confidence            float64   `json:"confidence,omitempty"`
+	ImageData             string    `json:"image_data,omitempty"`
+	OCRText               []string  `json:"ocr_text,omitempty"`
+	MetaJSON              string    `json:"meta_json,omitempty"`
+	CreatedAt             time.Time `json:"created_at"`
+}
+
+type FeedbackRequest struct {
+	PartNumberPredicted   string   `json:"part_number_predicted"`
+	PartNumberFinal       string   `json:"part_number_final"`
+	SerialNumberPredicted string   `json:"serial_number_predicted"`
+	SerialNumberFinal     string   `json:"serial_number_final"`
+	ManufacturerPredicted string   `json:"manufacturer_predicted"`
+	ManufacturerFinal     string   `json:"manufacturer_final"`
+	CategoryPredicted     string   `json:"category_predicted"`
+	CategoryFinal         string   `json:"category_final"`
+	CorrectionApplied     bool     `json:"correction_applied"`
+	Confidence            float64  `json:"confidence"`
+	ImageData             string   `json:"image_data"`
+	OCRText               []string `json:"ocr_text"`
+	MetaJSON              string   `json:"meta_json"`
+}
+
+type FeedbackResponse struct {
+	Success bool            `json:"success"`
+	Data    *FeedbackSample `json:"data,omitempty"`
+	Error   string          `json:"error,omitempty"`
+}
+
+type FeedbackListResponse struct {
+	Total int              `json:"total"`
+	Items []FeedbackSample `json:"items"`
 }
 
 // InventoryInRequest requisição para entrada de estoque
@@ -387,6 +434,158 @@ func (db *Database) ListInventory(limit, offset int) ([]InventoryItem, int, erro
 
 		inventory.Catalog = &catalogItem
 		items = append(items, inventory)
+	}
+
+	return items, total, rows.Err()
+}
+
+func (db *Database) AddFeedback(req *FeedbackRequest) (*FeedbackSample, error) {
+	ocrTextJSON := "[]"
+	if len(req.OCRText) > 0 {
+		joined := make([]string, 0, len(req.OCRText))
+		for _, v := range req.OCRText {
+			joined = append(joined, strings.ReplaceAll(v, "\"", "'"))
+		}
+		ocrTextJSON = "[\"" + strings.Join(joined, "\",\"") + "\"]"
+	}
+
+	feedback := &FeedbackSample{}
+	err := db.conn.QueryRow(`
+		INSERT INTO feedback_samples (
+			part_number_predicted, part_number_final,
+			serial_number_predicted, serial_number_final,
+			manufacturer_predicted, manufacturer_final,
+			category_predicted, category_final,
+			correction_applied, confidence,
+			image_data, ocr_text, meta_json
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		RETURNING id,
+			COALESCE(part_number_predicted, ''),
+			COALESCE(part_number_final, ''),
+			COALESCE(serial_number_predicted, ''),
+			COALESCE(serial_number_final, ''),
+			COALESCE(manufacturer_predicted, ''),
+			COALESCE(manufacturer_final, ''),
+			COALESCE(category_predicted, ''),
+			COALESCE(category_final, ''),
+			correction_applied,
+			COALESCE(confidence, 0),
+			COALESCE(image_data, ''),
+			COALESCE(meta_json, ''),
+			created_at
+	`,
+		req.PartNumberPredicted,
+		req.PartNumberFinal,
+		req.SerialNumberPredicted,
+		req.SerialNumberFinal,
+		req.ManufacturerPredicted,
+		req.ManufacturerFinal,
+		req.CategoryPredicted,
+		req.CategoryFinal,
+		req.CorrectionApplied,
+		req.Confidence,
+		req.ImageData,
+		ocrTextJSON,
+		req.MetaJSON,
+	).Scan(
+		&feedback.ID,
+		&feedback.PartNumberPredicted,
+		&feedback.PartNumberFinal,
+		&feedback.SerialNumberPredicted,
+		&feedback.SerialNumberFinal,
+		&feedback.ManufacturerPredicted,
+		&feedback.ManufacturerFinal,
+		&feedback.CategoryPredicted,
+		&feedback.CategoryFinal,
+		&feedback.CorrectionApplied,
+		&feedback.Confidence,
+		&feedback.ImageData,
+		&feedback.MetaJSON,
+		&feedback.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	feedback.OCRText = req.OCRText
+	return feedback, nil
+}
+
+func (db *Database) ListFeedbackSamples(limit int, correctionsOnly bool) ([]FeedbackSample, int, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+
+	baseWhere := ""
+	args := []any{}
+	if correctionsOnly {
+		baseWhere = " WHERE correction_applied = TRUE"
+	}
+
+	var total int
+	err := db.conn.QueryRow("SELECT COUNT(*) FROM feedback_samples" + baseWhere).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	query := `
+		SELECT id,
+			COALESCE(part_number_predicted, ''),
+			COALESCE(part_number_final, ''),
+			COALESCE(serial_number_predicted, ''),
+			COALESCE(serial_number_final, ''),
+			COALESCE(manufacturer_predicted, ''),
+			COALESCE(manufacturer_final, ''),
+			COALESCE(category_predicted, ''),
+			COALESCE(category_final, ''),
+			correction_applied,
+			COALESCE(confidence, 0),
+			COALESCE(image_data, ''),
+			COALESCE(ocr_text, '[]'),
+			COALESCE(meta_json, ''),
+			created_at
+		FROM feedback_samples` + baseWhere + `
+		ORDER BY created_at DESC
+		LIMIT $1
+	`
+	args = append(args, limit)
+
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	items := []FeedbackSample{}
+	for rows.Next() {
+		item := FeedbackSample{}
+		var ocrTextRaw string
+		err = rows.Scan(
+			&item.ID,
+			&item.PartNumberPredicted,
+			&item.PartNumberFinal,
+			&item.SerialNumberPredicted,
+			&item.SerialNumberFinal,
+			&item.ManufacturerPredicted,
+			&item.ManufacturerFinal,
+			&item.CategoryPredicted,
+			&item.CategoryFinal,
+			&item.CorrectionApplied,
+			&item.Confidence,
+			&item.ImageData,
+			&ocrTextRaw,
+			&item.MetaJSON,
+			&item.CreatedAt,
+		)
+		if err != nil {
+			continue
+		}
+
+		if ocrTextRaw != "" && ocrTextRaw != "[]" {
+			_ = json.Unmarshal([]byte(ocrTextRaw), &item.OCRText)
+		}
+		items = append(items, item)
 	}
 
 	return items, total, rows.Err()

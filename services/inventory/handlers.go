@@ -194,6 +194,66 @@ func (h *Handler) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// SubmitFeedbackHandler POST /feedback/submit
+func (h *Handler) SubmitFeedbackHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req FeedbackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(FeedbackResponse{
+			Success: false,
+			Error:   "Erro ao decodificar requisição",
+		})
+		return
+	}
+
+	feedback, err := h.db.AddFeedback(&req)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(FeedbackResponse{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(FeedbackResponse{Success: true, Data: feedback})
+}
+
+// ActiveLearningFeedbackHandler GET /feedback/active-learning?limit=200&corrections_only=true
+func (h *Handler) ActiveLearningFeedbackHandler(w http.ResponseWriter, r *http.Request) {
+	limit := 200
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			if parsed > 5000 {
+				parsed = 5000
+			}
+			limit = parsed
+		}
+	}
+
+	correctionsOnly := r.URL.Query().Get("corrections_only") == "true"
+	items, total, err := h.db.ListFeedbackSamples(limit, correctionsOnly)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(FeedbackListResponse{Total: total, Items: items})
+}
+
 // RegisterRoutes registra as rotas
 func (h *Handler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/health", h.HealthHandler).Methods("GET")
@@ -201,4 +261,6 @@ func (h *Handler) RegisterRoutes(router *mux.Router) {
 	router.HandleFunc("/inventory/in", h.AddInventoryHandler).Methods("POST")
 	router.HandleFunc("/inventory/items", h.ListInventoryHandler).Methods("GET")
 	router.HandleFunc("/inventory/items/{id}", h.GetInventoryHandler).Methods("GET")
+	router.HandleFunc("/feedback/submit", h.SubmitFeedbackHandler).Methods("POST")
+	router.HandleFunc("/feedback/active-learning", h.ActiveLearningFeedbackHandler).Methods("GET")
 }

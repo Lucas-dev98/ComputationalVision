@@ -4,6 +4,21 @@
 
 Este documento descreve como rodar toda a stack do projeto localmente para desenvolvimento e testes.
 
+## Validacao Local Recente (2026-06-08)
+
+Checklist executado localmente neste ambiente Windows:
+
+- [OK] Servicos reiniciados com sucesso: frontend (3000), OCR (5001), parser (8082), web-research (8083), inventory sqlite (8081)
+- [OK] Health checks de todos os servicos retornando status healthy
+- [OK] Feedback loop ativo: `POST /feedback/submit` e `GET /feedback/active-learning` validados
+- [OK] Regressao automatica da Fase 3: `scripts/e2e_phase3.py` concluido com sucesso
+- [OK] Testes unitarios de parser e inventory passando
+- [OK] Build de producao do frontend concluido com sucesso
+
+Observacao de UI:
+
+- O navegador integrado pode bloquear a camera por permissao (`NotAllowedError`). Quando ocorrer, habilite a permissao de camera no browser para validar a captura ponta a ponta via webcam.
+
 ### Arquitetura
 
 ```
@@ -85,6 +100,27 @@ go run .
 ```
 
 No primeiro start, o servico cria as tabelas e um seed minimo no arquivo local `inventory-dev.db`.
+
+## Ciclo de Aprendizado Contínuo (YOLO + Feedback Humano)
+
+Com o frontend e inventory rodando, cada aprovacao envia feedback para:
+
+- `POST /feedback/submit`
+- `GET /feedback/active-learning`
+
+Exportar amostras de aprendizado ativo:
+
+```bash
+make vision-export
+```
+
+Treinar e avaliar modelo YOLO:
+
+```bash
+make vision-train
+make vision-eval
+make vision-promote
+```
 
 ## 🔧 Configuração Inicial
 

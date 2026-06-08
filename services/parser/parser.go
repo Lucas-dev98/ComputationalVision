@@ -23,8 +23,10 @@ var manufacturerAliases = map[string]string{
 }
 
 var partNumberPattern = regexp.MustCompile(`\b[A-Z0-9][A-Z0-9._/-]{7,}\b`)
-var serialNumberPattern = regexp.MustCompile(`\b(?:SN|S/N)[:\- ]*([A-Z0-9][A-Z0-9\-]{5,})\b`)
+var serialNumberPattern = regexp.MustCompile(`\b(?:SN|S/N|S\.N\.|SER\.?\s*NO\.?|SERIAL|SERIAL\s*NO|SERIALNUMBER)\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-]{5,})\b`)
 var labeledPartNumberPattern = regexp.MustCompile(`\b(REF|P/N|PN|PART\s*NO|PARTNUMBER)\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{5,})\b`)
+var serialCandidatePattern = regexp.MustCompile(`\b[A-Z0-9][A-Z0-9\-]{7,}\b`)
+var wwnHexPattern = regexp.MustCompile(`^[0-9A-F]{16,32}$`)
 
 func NormalizeText(lines []string) string {
 	cleaned := make([]string, 0, len(lines))
@@ -172,21 +174,96 @@ func normalizePrefixedPartNumber(line string) string {
 }
 
 func ExtractSerialNumber(lines []string) RuleMatch {
-	joined := NormalizeText(lines)
-	if joined == "" {
+	if len(lines) == 0 {
 		return RuleMatch{}
 	}
 
-	matches := serialNumberPattern.FindAllStringSubmatch(joined, -1)
-	if len(matches) == 0 {
+	partNumber := ExtractPartNumber(lines).Value
+
+	// Regra principal: usar valor explicitamente rotulado como S/N (ou variações).
+	for _, line := range lines {
+		upperLine := strings.ToUpper(strings.TrimSpace(line))
+		if upperLine == "" {
+			continue
+		}
+
+		matches := serialNumberPattern.FindAllStringSubmatch(upperLine, -1)
+		for _, match := range matches {
+			if len(match) < 2 {
+				continue
+			}
+
+			candidate := strings.TrimSpace(match[1])
+			if candidate == "" || isLikelySpecToken(candidate) || isLikelyWWNValue(candidate, upperLine) {
+				continue
+			}
+
+			return RuleMatch{
+				Value:   candidate,
+				Signals: []string{"serial-prefix"},
+			}
+		}
+	}
+
+	// Fallback: candidatos genéricos apenas quando não há S/N explícito.
+	best := ""
+	bestScore := -1
+	for _, line := range lines {
+		upperLine := strings.ToUpper(strings.TrimSpace(line))
+		if upperLine == "" {
+			continue
+		}
+
+		candidates := serialCandidatePattern.FindAllString(upperLine, -1)
+		for _, candidate := range candidates {
+			if candidate == partNumber {
+				continue
+			}
+			if strings.Contains(upperLine, "MODEL") || strings.Contains(upperLine, "P/N") || strings.Contains(upperLine, "PN") || strings.Contains(upperLine, "REF") {
+				continue
+			}
+			if isLikelySpecToken(candidate) || isLikelyWWNValue(candidate, upperLine) {
+				continue
+			}
+			if !hasDigit(candidate) {
+				continue
+			}
+
+			score := len(candidate)
+			if strings.HasPrefix(candidate, "SN") {
+				score += 5
+			}
+			if strings.Contains(candidate, "-") {
+				score += 2
+			}
+
+			if score > bestScore {
+				best = candidate
+				bestScore = score
+			}
+		}
+	}
+
+	if best == "" {
 		return RuleMatch{}
 	}
 
-	serial := matches[0][1]
-	return RuleMatch{
-		Value:   serial,
-		Signals: []string{"serial-prefix"},
+	return RuleMatch{Value: best, Signals: []string{"serial-fallback"}}
+}
+
+func isLikelyWWNValue(value, line string) bool {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	lineUpper := strings.ToUpper(line)
+
+	if strings.Contains(lineUpper, "WWN") || strings.Contains(lineUpper, "WORLD WIDE NAME") || strings.Contains(lineUpper, "NAA") {
+		return true
 	}
+
+	if wwnHexPattern.MatchString(normalized) {
+		return true
+	}
+
+	return false
 }
 
 func DetectManufacturer(lines []string, partNumber string) RuleMatch {

@@ -37,8 +37,27 @@ func bootstrapSQLite(conn *sql.DB) error {
 			user_id INTEGER,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);`,
+		`CREATE TABLE IF NOT EXISTS feedback_samples (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			part_number_predicted TEXT,
+			part_number_final TEXT,
+			serial_number_predicted TEXT,
+			serial_number_final TEXT,
+			manufacturer_predicted TEXT,
+			manufacturer_final TEXT,
+			category_predicted TEXT,
+			category_final TEXT,
+			correction_applied BOOLEAN NOT NULL DEFAULT 0,
+			confidence REAL,
+			image_data TEXT,
+			ocr_text TEXT,
+			meta_json TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);`,
 		`CREATE INDEX IF NOT EXISTS idx_catalog_pn ON catalog(part_number);`,
 		`CREATE INDEX IF NOT EXISTS idx_inventory_status ON inventory(status);`,
+		`CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback_samples(created_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_feedback_correction ON feedback_samples(correction_applied);`,
 	}
 
 	for _, stmt := range statements {

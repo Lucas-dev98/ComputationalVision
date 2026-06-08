@@ -64,6 +64,28 @@ go test -v -cover
 
 ## Testes de Integração
 
+### E2E Fase 3 (local, sem Docker)
+
+Com os serviços locais em execução (OCR, parser, web-research, inventory e frontend):
+
+```bash
+make test-e2e
+```
+
+Ou diretamente:
+
+```bash
+python scripts/e2e_phase3.py
+```
+
+O script valida:
+- health checks dos serviços
+- chamada OCR
+- parse de PN/SN
+- busca no catálogo
+- pesquisa web
+- entrada em estoque (quando PN existe no catálogo)
+
 ### Frontend + Backend
 
 ```bash

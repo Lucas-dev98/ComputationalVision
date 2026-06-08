@@ -111,3 +111,26 @@ func TestParseLinesDisk(t *testing.T) {
 		t.Fatalf("expected part number INTEL_SSDPE2MX450G7, got %q", result.PartNumber)
 	}
 }
+
+func TestParseLinesPrefersSNOverWWN(t *testing.T) {
+	result := ParseLines([]string{
+		"MODEL: WDS240G2G0A",
+		"WWN: 5001B448B6351C20",
+		"S/N: 21493L800954",
+	})
+
+	if result.SerialNumber != "21493L800954" {
+		t.Fatalf("expected serial number 21493L800954, got %q", result.SerialNumber)
+	}
+}
+
+func TestParseLinesIgnoresWWNWhenNoSNLabel(t *testing.T) {
+	result := ParseLines([]string{
+		"MODEL: WDS240G2G0A",
+		"WORLD WIDE NAME: 5001B448B6351C20",
+	})
+
+	if result.SerialNumber != "" {
+		t.Fatalf("expected empty serial number, got %q", result.SerialNumber)
+	}
+}

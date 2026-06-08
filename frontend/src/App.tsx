@@ -46,7 +46,7 @@ interface WebResearchResult {
 }
 
 const PART_NUMBER_REGEX = /\b[A-Z0-9][A-Z0-9._/-]{5,}\b/g;
-const SERIAL_LABELED_REGEX = /\b(?:SN|S\/N|SERIAL|SERIAL\s*NO|SERIALNUMBER)\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{4,})\b/i;
+const SERIAL_LABELED_REGEX = /\b(?:SN|S\/N|S\.N\.|SER\.?\s*NO\.?|SERIAL|SERIAL\s*NO|SERIALNUMBER)\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{4,})\b/i;
 const SERIAL_CANDIDATE_REGEX = /\b[A-Z0-9][A-Z0-9-]{7,}\b/g;
 
 function isLikelySpecToken(token: string): boolean {
@@ -71,7 +71,7 @@ function candidateScore(token: string): number {
   if (/[A-Z]/.test(token)) {
     score += 2;
   }
-  if (/[-_/\.]/.test(token)) {
+  if (/[-_/.]/.test(token)) {
     score += 2;
   }
   if (token.length >= 10) {
@@ -123,12 +123,28 @@ function extractPartNumberFromOCRText(lines: string[]): string {
 function extractSerialNumberFromOCRText(lines: string[], partNumber = ""): string {
   const normalizedPartNumber = partNumber.toUpperCase().trim();
 
+  const isLikelyWWN = (value: string, line: string) => {
+    const normalizedValue = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const upperLine = line.toUpperCase();
+
+    if (upperLine.includes('WWN') || upperLine.includes('WORLD WIDE NAME') || upperLine.includes('NAA')) {
+      return true;
+    }
+
+    // WWN costuma ser hexadecimal longo (ex.: 5001B448B6351C20)
+    if (/^[0-9A-F]{16,32}$/.test(normalizedValue)) {
+      return true;
+    }
+
+    return false;
+  };
+
   for (const rawLine of lines || []) {
     const upperLine = (rawLine || "").toUpperCase();
     const labeled = upperLine.match(SERIAL_LABELED_REGEX);
     if (labeled?.[1]) {
       const serial = labeled[1].trim();
-      if (serial !== normalizedPartNumber && !isLikelySpecToken(serial)) {
+      if (serial !== normalizedPartNumber && !isLikelySpecToken(serial) && !isLikelyWWN(serial, upperLine)) {
         return serial;
       }
     }
@@ -150,6 +166,9 @@ function extractSerialNumberFromOCRText(lines: string[], partNumber = ""): strin
       if (isLikelySpecToken(value)) {
         continue;
       }
+      if (isLikelyWWN(value, upperLine)) {
+        continue;
+      }
       candidates.push(value);
     }
   }
@@ -168,6 +187,48 @@ function extractSerialNumberFromOCRText(lines: string[], partNumber = ""): strin
   });
 
   return sorted[0] || "";
+}
+
+function extractLabeledSerialNumberFromOCRText(lines: string[], partNumber = ""): string {
+  const normalizedPartNumber = partNumber.toUpperCase().trim();
+
+  const isLikelyWWN = (value: string, line: string) => {
+    const normalizedValue = value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const upperLine = line.toUpperCase();
+
+    if (upperLine.includes('WWN') || upperLine.includes('WORLD WIDE NAME') || upperLine.includes('NAA')) {
+      return true;
+    }
+
+    if (/^[0-9A-F]{16,32}$/.test(normalizedValue)) {
+      return true;
+    }
+
+    return false;
+  };
+
+  for (const rawLine of lines || []) {
+    const upperLine = (rawLine || '').toUpperCase();
+    const labeled = upperLine.match(SERIAL_LABELED_REGEX);
+    if (!labeled?.[1]) {
+      continue;
+    }
+
+    const serial = labeled[1].trim();
+    if (serial === normalizedPartNumber) {
+      continue;
+    }
+    if (isLikelySpecToken(serial)) {
+      continue;
+    }
+    if (isLikelyWWN(serial, upperLine)) {
+      continue;
+    }
+
+    return serial;
+  }
+
+  return '';
 }
 
 function App() {
@@ -218,8 +279,9 @@ function App() {
           const parsed = await parserService.parseOcrText(result.text || []);
           const ocrFallbackPartNumber = extractPartNumberFromOCRText(result.text || []);
           const suggestedPartNumber = parsed.part_number || result.detected_part_numbers?.[0] || ocrFallbackPartNumber || result.text[0] || '';
+          const labeledSerial = extractLabeledSerialNumberFromOCRText(result.text || [], suggestedPartNumber);
           const ocrFallbackSerial = extractSerialNumberFromOCRText(result.text || [], suggestedPartNumber);
-          const suggestedSerialNumber = parsed.serial_number || result.detected_serial_numbers?.[0] || ocrFallbackSerial || '';
+          const suggestedSerialNumber = labeledSerial || parsed.serial_number || result.detected_serial_numbers?.[0] || ocrFallbackSerial || '';
 
           const parsedWithFallback = {
             ...parsed,
@@ -288,7 +350,8 @@ function App() {
 
           const ocrFallbackPartNumber = extractPartNumberFromOCRText(result.text || []);
           const fallbackPartNumber = result.detected_part_numbers?.[0] || ocrFallbackPartNumber || result.text[0] || '';
-          const fallbackSerialNumber = result.detected_serial_numbers?.[0] || extractSerialNumberFromOCRText(result.text || [], fallbackPartNumber) || '';
+          const labeledSerial = extractLabeledSerialNumberFromOCRText(result.text || [], fallbackPartNumber);
+          const fallbackSerialNumber = labeledSerial || result.detected_serial_numbers?.[0] || extractSerialNumberFromOCRText(result.text || [], fallbackPartNumber) || '';
           setSuggestedPN(fallbackPartNumber);
           setSuggestedSN(fallbackSerialNumber);
 
@@ -334,6 +397,33 @@ function App() {
       });
 
       if (response.success) {
+        const correctionApplied =
+          (suggestedPN || '') !== (data.part_number || '') ||
+          (suggestedSN || '') !== (data.serial_number || '');
+
+        try {
+          await inventoryService.submitFeedback({
+            part_number_predicted: suggestedPN || parserResult?.part_number || '',
+            part_number_final: data.part_number || '',
+            serial_number_predicted: suggestedSN || parserResult?.serial_number || '',
+            serial_number_final: data.serial_number || '',
+            manufacturer_predicted: parserResult?.manufacturer || '',
+            manufacturer_final: parserResult?.manufacturer || '',
+            category_predicted: parserResult?.category || '',
+            category_final: parserResult?.category || '',
+            correction_applied: correctionApplied,
+            confidence: parserResult?.confidence || 0,
+            image_data: capturedImage || '',
+            ocr_text: ocrResult?.text || [],
+            meta_json: JSON.stringify({
+              web_research: webResearchResult,
+              catalog_search: catalogSearchResult,
+            }),
+          });
+        } catch (feedbackError) {
+          console.warn('Não foi possível registrar feedback de aprendizado:', feedbackError);
+        }
+
         message.success('Item adicionado ao estoque com sucesso!');
         
         // Limpar formulário

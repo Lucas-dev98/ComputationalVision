@@ -1,4 +1,4 @@
-.PHONY: help install build up down logs clean test lint format
+.PHONY: help install build up down logs clean test lint format test-e2e vision-export vision-train vision-eval vision-promote
 
 help:
 	@echo "Sistema de Entrada de Estoque - Comandos Disponíveis"
@@ -18,8 +18,15 @@ help:
 	@echo ""
 	@echo "Qualidade:"
 	@echo "  make test         - Executa todos os testes"
+	@echo "  make test-e2e     - Executa E2E local da Fase 3"
 	@echo "  make lint         - Executa linter"
 	@echo "  make format       - Formata código"
+	@echo ""
+	@echo "Visão (YOLO):"
+	@echo "  make vision-export  - Exporta feedback para active learning"
+	@echo "  make vision-train   - Treina modelo YOLO"
+	@echo "  make vision-eval    - Avalia modelo YOLO"
+	@echo "  make vision-promote - Promove modelo com gate de métricas"
 	@echo ""
 	@echo "Banco de Dados:"
 	@echo "  make db-init      - Inicializa banco (via docker)"
@@ -110,6 +117,21 @@ api-dev:
 test:
 	@echo "Executando testes..."
 	@echo "TODO: Implementar testes"
+
+test-e2e:
+	python scripts/e2e_phase3.py
+
+vision-export:
+	python scripts/vision/export_active_learning.py --inventory-url http://localhost:8081 --limit 500 --corrections-only
+
+vision-train:
+	python scripts/vision/train_yolo.py --model yolov8n.pt --data services/vision/config/dataset.yaml --epochs 100 --imgsz 640 --batch 8 --project runs/vision --name yolo_continual
+
+vision-eval:
+	python scripts/vision/evaluate_yolo.py --weights services/vision/models/active.pt --data services/vision/config/dataset.yaml --out runs/vision/latest_eval.json
+
+vision-promote:
+	python scripts/vision/promote_model.py --candidate-weights runs/vision/yolo_continual/weights/best.pt --candidate-metrics runs/vision/latest_eval.json --baseline-metrics services/vision/models/active.metrics.json --registry-dir services/vision/models --min-map50-gain 0.001
 
 lint:
 	@echo "Linting..."

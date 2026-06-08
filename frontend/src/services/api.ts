@@ -121,6 +121,40 @@ export const inventoryService = {
       throw error;
     }
   },
+
+  async submitFeedback(data: {
+    part_number_predicted?: string;
+    part_number_final?: string;
+    serial_number_predicted?: string;
+    serial_number_final?: string;
+    manufacturer_predicted?: string;
+    manufacturer_final?: string;
+    category_predicted?: string;
+    category_final?: string;
+    correction_applied: boolean;
+    confidence?: number;
+    image_data?: string;
+    ocr_text?: string[];
+    meta_json?: string;
+  }) {
+    try {
+      const response = await apiClient.post('/feedback/submit', data);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao enviar feedback de aprendizado:', error);
+      throw error;
+    }
+  },
+
+  async listActiveLearningFeedback(limit = 200, correctionsOnly = true) {
+    try {
+      const response = await apiClient.get(`/feedback/active-learning?limit=${limit}&corrections_only=${correctionsOnly}`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao listar feedbacks de aprendizado:', error);
+      throw error;
+    }
+  },
 };
 
 export const parserService = {
