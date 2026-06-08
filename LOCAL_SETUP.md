@@ -76,6 +76,20 @@ $env:PORT='8083'
 go run .
 ```
 
+Os servicos Go agora aceitam estes parametros opcionais de protecao basica de API:
+
+```bash
+$env:RATE_LIMIT_ENABLED='true'
+$env:RATE_LIMIT_REQUESTS='120'
+$env:RATE_LIMIT_WINDOW_SECONDS='60'
+```
+
+- `RATE_LIMIT_ENABLED`: ativa/desativa o middleware (`true` por padrao)
+- `RATE_LIMIT_REQUESTS`: total de requisicoes permitidas por IP dentro da janela
+- `RATE_LIMIT_WINDOW_SECONDS`: duracao da janela de contagem
+
+O endpoint `/health` e requisicoes `OPTIONS` ficam fora do rate limiting para nao quebrar observabilidade e CORS.
+
 Opcionalmente, abra um 5o terminal para o Inventory Service se tiver PostgreSQL local configurado:
 
 ```bash

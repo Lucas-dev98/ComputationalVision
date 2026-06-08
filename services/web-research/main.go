@@ -20,6 +20,7 @@ func main() {
 	router := mux.NewRouter()
 	router.Use(corsMiddleware)
 	router.Use(loggingMiddleware)
+	router.Use(newRateLimitMiddleware(loadRateLimitConfig()))
 	router.HandleFunc("/health", handler.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/research", handler.ResearchHandler).Methods(http.MethodGet, http.MethodPost, http.MethodOptions)
 

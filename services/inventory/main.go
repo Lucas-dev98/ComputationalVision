@@ -33,6 +33,7 @@ func main() {
 	// Middleware para logs
 	router.Use(loggingMiddleware)
 	router.Use(corsMiddleware)
+	router.Use(newRateLimitMiddleware(loadRateLimitConfig()))
 
 	// Iniciar servidor
 	log.Printf("Servidor escutando em 0.0.0.0:%s", config.Port)

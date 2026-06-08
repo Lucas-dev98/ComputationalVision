@@ -329,7 +329,20 @@ curl -X POST http://localhost:5001/ocr/batch \
 
 ## Rate Limiting
 
-Não implementado em Fase 1. Será adicionado em produções.
+Implementado nos servicos Go (`inventory`, `parser` e `web-research`) com controle por IP.
+
+Configuracao por ambiente:
+
+- `RATE_LIMIT_ENABLED=true`
+- `RATE_LIMIT_REQUESTS=120`
+- `RATE_LIMIT_WINDOW_SECONDS=60`
+
+Comportamento:
+
+- Resposta `429 Too Many Requests` quando o IP excede o limite na janela
+- Header `Retry-After` informando em quantos segundos tentar novamente
+- Headers `X-RateLimit-Limit` e `X-RateLimit-Remaining`
+- `/health` e `OPTIONS` nao entram no calculo
 
 ---
 

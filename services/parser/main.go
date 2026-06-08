@@ -15,6 +15,7 @@ func main() {
 	handler := &Handler{}
 	router := mux.NewRouter()
 	router.Use(corsMiddleware)
+	router.Use(newRateLimitMiddleware(loadRateLimitConfig()))
 	router.HandleFunc("/health", handler.HealthHandler).Methods(http.MethodGet)
 	router.HandleFunc("/parse", handler.ParseHandler).Methods(http.MethodPost)
 	router.HandleFunc("/parse", handler.ParseHandler).Methods(http.MethodOptions)
