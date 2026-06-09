@@ -45,3 +45,19 @@ func TestFallbackInferenceWithoutWebResults(t *testing.T) {
 		t.Fatalf("expected Intel manufacturer, got %q", response.Manufacturer)
 	}
 }
+
+func TestEnrichFromSignalsPrefersHPEOverHPAlias(t *testing.T) {
+	req := ResearchRequest{PartNumber: "P18424-B21", Tokens: []string{"HPE 1.92TB SAS SSD"}}
+	response := enrichFromSignals(req.PartNumber, req, nil)
+	if response.Manufacturer != "HPE" {
+		t.Fatalf("expected HPE manufacturer, got %q", response.Manufacturer)
+	}
+}
+
+func TestFallbackInferenceWesternDigitalFromPartNumber(t *testing.T) {
+	req := ResearchRequest{PartNumber: "WDS240G2G0A"}
+	response := enrichFromSignals(req.PartNumber, req, nil)
+	if response.Manufacturer != "Western Digital" {
+		t.Fatalf("expected Western Digital manufacturer, got %q", response.Manufacturer)
+	}
+}

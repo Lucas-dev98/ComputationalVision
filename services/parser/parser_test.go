@@ -112,6 +112,43 @@ func TestParseLinesDisk(t *testing.T) {
 	}
 }
 
+func TestParseLinesPrefersHPEOverHPAlias(t *testing.T) {
+	result := ParseLines([]string{
+		"HPE 1.92TB SAS SSD",
+		"P/N: P18424-B21",
+	})
+
+	if result.Manufacturer != "HPE" {
+		t.Fatalf("expected manufacturer HPE, got %q", result.Manufacturer)
+	}
+}
+
+func TestParseLinesInfersWesternDigitalFromPartNumber(t *testing.T) {
+	result := ParseLines([]string{
+		"MODEL: WDS240G2G0A",
+		"WORLD WIDE NAME: 5001B448B6351C20",
+		"S/N: 21493L800954",
+	})
+
+	if result.Manufacturer != "Western Digital" {
+		t.Fatalf("expected manufacturer Western Digital, got %q", result.Manufacturer)
+	}
+	if result.SerialNumber != "21493L800954" {
+		t.Fatalf("expected serial number 21493L800954, got %q", result.SerialNumber)
+	}
+}
+
+func TestParseLinesInfersMicronFromPartNumber(t *testing.T) {
+	result := ParseLines([]string{
+		"MTA18ASF2G72PDZ-3G2R1",
+		"32GB DDR4 ECC RDIMM",
+	})
+
+	if result.Manufacturer != "Micron" {
+		t.Fatalf("expected manufacturer Micron, got %q", result.Manufacturer)
+	}
+}
+
 func TestParseLinesPrefersSNOverWWN(t *testing.T) {
 	result := ParseLines([]string{
 		"MODEL: WDS240G2G0A",

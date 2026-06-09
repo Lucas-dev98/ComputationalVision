@@ -11,21 +11,34 @@ import (
 	"strings"
 )
 
-var manufacturerAliases = map[string]string{
-	"HPE":             "HPE",
-	"HP":              "HP",
-	"HISENSE":         "Hisense",
-	"INTEL":           "Intel",
-	"KINGSTON":        "Kingston",
-	"MICRON":          "Micron",
-	"SAMSUNG":         "Samsung",
-	"SEAGATE":         "Seagate",
-	"HGST":            "HGST",
-	"CISCO":           "Cisco",
-	"DELL":            "Dell",
-	"WESTERN DIGITAL": "Western Digital",
-	"WD":              "Western Digital",
+type manufacturerRule struct {
+	Canonical  string
+	Aliases    []string
+	PNPrefixes []string
 }
+
+var manufacturerRules = []manufacturerRule{
+	{Canonical: "HPE", Aliases: []string{"HPE", "HEWLETT PACKARD ENTERPRISE"}},
+	{Canonical: "HP", Aliases: []string{"HP", "HEWLETT PACKARD"}},
+	{Canonical: "SK hynix", Aliases: []string{"SK HYNIX", "HYNIX"}, PNPrefixes: []string{"HMA", "HMT", "HMC", "HFS", "HFB"}},
+	{Canonical: "Micron", Aliases: []string{"MICRON", "CRUCIAL"}, PNPrefixes: []string{"MTA", "MTF", "MTFD"}},
+	{Canonical: "Samsung", Aliases: []string{"SAMSUNG"}, PNPrefixes: []string{"M3", "M4", "MZ", "PM", "SM"}},
+	{Canonical: "Intel", Aliases: []string{"INTEL"}, PNPrefixes: []string{"INTEL_", "INTEL", "SSDPE", "SSDS", "SSDP"}},
+	{Canonical: "Kingston", Aliases: []string{"KINGSTON"}, PNPrefixes: []string{"KSM", "KVR", "SKC", "SUV"}},
+	{Canonical: "Seagate", Aliases: []string{"SEAGATE"}, PNPrefixes: []string{"SEAG"}},
+	{Canonical: "HGST", Aliases: []string{"HGST", "HITACHI GST", "HITACHI GLOBAL STORAGE"}, PNPrefixes: []string{"HUH", "HUS", "HUC"}},
+	{Canonical: "Cisco", Aliases: []string{"CISCO"}, PNPrefixes: []string{"UCSC"}},
+	{Canonical: "Dell", Aliases: []string{"DELL"}},
+	{Canonical: "Western Digital", Aliases: []string{"WESTERN DIGITAL", "WD", "WDC"}, PNPrefixes: []string{"WDS", "WDC", "WD"}},
+	{Canonical: "Hisense", Aliases: []string{"HISENSE"}},
+	{Canonical: "Broadcom", Aliases: []string{"BROADCOM"}},
+	{Canonical: "Mellanox", Aliases: []string{"MELLANOX"}},
+	{Canonical: "NVIDIA", Aliases: []string{"NVIDIA"}},
+	{Canonical: "Lenovo", Aliases: []string{"LENOVO"}},
+	{Canonical: "IBM", Aliases: []string{"IBM"}},
+}
+
+var seagatePartNumberPattern = regexp.MustCompile(`^ST\d`)
 
 type Researcher struct {
 	client *http.Client
@@ -131,18 +144,21 @@ func enrichFromSignals(partNumber string, req ResearchRequest, results []WebResu
 
 	manufacturer := strings.TrimSpace(req.Manufacturer)
 	if manufacturer == "" {
-		for alias, canonical := range manufacturerAliases {
-			if strings.Contains(webBlob, alias) || strings.Contains(joinedText, alias) {
-				manufacturer = canonical
-				signals = append(signals, "manufacturer:web:"+canonical)
-				break
-			}
+		if detected := detectManufacturerFromText(webBlob + " " + joinedText); detected != "" {
+			manufacturer = detected
+			signals = append(signals, "manufacturer:web:"+detected)
 		}
 	}
 	if manufacturer == "" {
 		manufacturer = inferManufacturerFromPartNumber(partNumber)
 		if manufacturer != "" {
 			signals = append(signals, "manufacturer:inferred")
+		}
+	}
+	if manufacturer == "" {
+		if inferred := inferManufacturerFromTokens(webBlob + " " + joinedText); inferred != "" {
+			manufacturer = inferred
+			signals = append(signals, "manufacturer:token-inferred")
 		}
 	}
 
@@ -253,19 +269,87 @@ func truncateResults(values []WebResult, max int) []WebResult {
 func inferManufacturerFromPartNumber(partNumber string) string {
 	pn := strings.ToUpper(strings.TrimSpace(partNumber))
 	switch {
-	case strings.HasPrefix(pn, "M"):
+	case hasAnyPrefix(pn, []string{"HMA", "HMT", "HMC", "HFS", "HFB"}):
+		return "SK hynix"
+	case hasAnyPrefix(pn, []string{"MTA", "MTF", "MTFD"}):
+		return "Micron"
+	case hasAnyPrefix(pn, []string{"M3", "M4", "MZ", "PM", "SM"}):
 		return "Samsung"
-	case strings.HasPrefix(pn, "HUH"):
+	case hasAnyPrefix(pn, []string{"HUH", "HUS", "HUC"}):
 		return "HGST"
-	case strings.HasPrefix(pn, "INTEL_") || strings.HasPrefix(pn, "INTEL") || strings.Contains(pn, "SSDPE"):
+	case hasAnyPrefix(pn, []string{"INTEL_", "INTEL", "SSDPE", "SSDS", "SSDP"}) || strings.Contains(pn, "SSDPE"):
 		return "Intel"
-	case strings.HasPrefix(pn, "SEAG"):
+	case seagatePartNumberPattern.MatchString(pn) || hasAnyPrefix(pn, []string{"SEAG"}):
 		return "Seagate"
-	case strings.HasPrefix(pn, "UCSC"):
+	case hasAnyPrefix(pn, []string{"UCSC"}):
 		return "Cisco"
+	case hasAnyPrefix(pn, []string{"KSM", "KVR", "SKC", "SUV"}):
+		return "Kingston"
+	case hasAnyPrefix(pn, []string{"WDS", "WDC", "WD"}):
+		return "Western Digital"
 	default:
 		return ""
 	}
+}
+
+func detectManufacturerFromText(value string) string {
+	normalizedValue := " " + normalizeManufacturerTokens(value) + " "
+	for _, rule := range manufacturerRules {
+		for _, alias := range rule.Aliases {
+			normalizedAlias := normalizeManufacturerTokens(alias)
+			if normalizedAlias != "" && strings.Contains(normalizedValue, " "+normalizedAlias+" ") {
+				return rule.Canonical
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeManufacturerTokens(value string) string {
+	upper := strings.ToUpper(strings.TrimSpace(value))
+	if upper == "" {
+		return ""
+	}
+
+	replacer := strings.NewReplacer(
+		"-", " ",
+		"_", " ",
+		"/", " ",
+		".", " ",
+		",", " ",
+		":", " ",
+		";", " ",
+		"(", " ",
+		")", " ",
+	)
+	return strings.Join(strings.Fields(replacer.Replace(upper)), " ")
+}
+
+func hasAnyPrefix(value string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(value, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func inferManufacturerFromTokens(value string) string {
+	normalized := normalizeManufacturerTokens(value)
+	if normalized == "" {
+		return ""
+	}
+
+	for _, token := range strings.Fields(normalized) {
+		if len(token) < 3 {
+			continue
+		}
+		if inferred := inferManufacturerFromPartNumber(token); inferred != "" {
+			return inferred
+		}
+	}
+
+	return ""
 }
 
 func hasAny(joined string, tokens []string) bool {
